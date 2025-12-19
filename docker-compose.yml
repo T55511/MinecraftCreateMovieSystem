@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  # --- 1. FastAPI バックエンドサービス ---
+  api:
+    build: .  # 現在のディレクトリのDockerfileを使用
+    container_name: coding-partner-api
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - .:/app  # ホストのコードをコンテナにマウント (開発用)
+    ports:
+      - "8010:8000"
+    environment:
+      - FRONTEND_URL=http://localhost:3010  # フロントエンドのURL
+    env_file:
+      - .env  # 環境変数ファイルを指定
+    depends_on:
+      - db
+    restart: always
+
+  # --- 2. PostgreSQL データベースサービス ---
+  db:
+    image: postgres:15-alpine
+    container_name: minecraft_movie_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+      - ./init-db:/docker-entrypoint-initdb.d  # 初期SQLを実行
+    env_file:
+      - .env
+    ports:
+      - "5410:5432"
+    restart: always
+    healthcheck: # DBの起動確認
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # --- 3. フロントエンド サービス (ここではプレースホルダーとして定義) ---
+  frontend:
+    image: node:18-alpine
+    container_name: coding-partner-frontend
+    # command: sh -c "echo 'Frontend setup complete' && sleep infinity" # 仮のコマンド
+    build:
+      context: ./frontend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "3010:3000"
+    tty: true  # 👈 これを追加
+    stdin_open: true # 👈 これを追加
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8010 # バックエンドAPIのURL
+      - CHOKIDAR_USEPOLLING=true # ホットリロード用
+    command: sh -c "npm install && npm run dev -- -p 3000 -H 0.0.0.0"
+    depends_on:
+      - api
+    restart: always
+
+volumes:
+  postgres_data:

@@ -1,0 +1,10 @@
+{
+  "theme": "AI時代の仕事と幸福度",
+  "input_angle_id": 1 
+}
+
+{
+  "task_name": "音声編集",
+  "est_time_min": 15,
+  "task_category": "編集" 
+}

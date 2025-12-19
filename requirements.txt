@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+psycopg2-binary  # PostgreSQL接続用
+pydantic
+pydantic-settings # 環境変数管理用
+google-genai==0.1.0 # Gemini APIクライアントライブラリ
