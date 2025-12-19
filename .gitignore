@@ -5,3 +5,6 @@ dist/
 .idea/
 .vscode/
 *.log
+# Next.js
+frontend/.next/
+frontend/node_modules/
