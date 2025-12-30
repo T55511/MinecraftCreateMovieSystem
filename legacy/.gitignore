@@ -8,3 +8,14 @@ dist/
 # Next.js
 frontend/.next/
 frontend/node_modules/
+legacy/frontend/.next/
+legacy/frontend/node_modules/
+v2/web/.next/
+v2/web/node_modules/
+# Python
+__pycache__/
+*.pyc
+env/
+venv/
+ENV/
+.venv/
