@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: app
+    ports:
+      - "5420:5432"
+    volumes:
+      - pgdata_v2:/var/lib/postgresql/data
+
+  api_v2:
+    build: ./v2/api
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/app
+    ports:
+      - "8010:8010"
+    depends_on:
+      - db
+
+  web_v2:
+    build: ./v2/web
+    environment:
+      NEXT_PUBLIC_API_BASE: http://localhost:8010
+    ports:
+      - "3010:3010"
+    depends_on:
+      - api_v2
+
+volumes:
+  pgdata_v2:
