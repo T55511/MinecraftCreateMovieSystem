@@ -121,3 +121,17 @@ export async function getTaskTimerStatus(projectId: number, taskId: number): Pro
   return res.json();
 }
 
+export type Workload = {
+  from: string;
+  to: string;
+  actual_minutes_7d: number;
+  estimated_minutes_7d: number;
+  load_percent: number;
+};
+
+export async function getWorkload(): Promise<Workload> {
+  const res = await fetch(`${API_BASE}/v2/dashboard/workload`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Failed to get workload: ${res.status}`);
+  return res.json();
+}
+

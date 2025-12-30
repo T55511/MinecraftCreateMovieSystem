@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from fastapi import FastAPI, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -439,5 +439,50 @@ def timer_status(project_id: int, project_task_id: int, db: Session = Depends(ge
         "running": True,
         "start_time": running.start_time,
         "elapsed_min": float(elapsed_min),
+    }
+
+@app.get("/v2/dashboard/workload")
+def dashboard_workload(db: Session = Depends(get_db)):
+    now = datetime.utcnow()
+    start = now - timedelta(days=7)
+
+    # 直近7日で終了したログを対象
+    actual = db.execute(
+        select(func.coalesce(func.sum(TTimerLog.duration_min), 0.0))
+        .where(TTimerLog.end_time.is_not(None))
+        .where(TTimerLog.end_time >= start)
+        .where(TTimerLog.duration_min.is_not(None))
+    ).scalar_one()
+
+    # 直近7日で作業したプロジェクト（timerlog経由で project_id を引く）
+    project_ids = db.execute(
+        select(func.distinct(TProjectTask.project_id))
+        .join(TTimerLog, TTimerLog.project_task_id == TProjectTask.project_task_id)
+        .where(TTimerLog.end_time.is_not(None))
+        .where(TTimerLog.end_time >= start)
+    ).scalars().all()
+
+    if project_ids:
+        estimated = db.execute(
+            select(func.coalesce(func.sum(TProjectTask.est_time_min_snapshot), 0))
+            .where(TProjectTask.project_id.in_(project_ids))
+            .where(TProjectTask.is_active == True)
+        ).scalar_one()
+    else:
+        estimated = 0
+
+    estimated = float(estimated)
+    actual = float(actual)
+
+    load_percent = 0.0
+    if estimated > 0:
+        load_percent = float(round((actual / estimated) * 100.0, 1))
+
+    return {
+        "from": start.isoformat(),
+        "to": now.isoformat(),
+        "actual_minutes_7d": round(actual, 1),
+        "estimated_minutes_7d": round(estimated, 1),
+        "load_percent": load_percent,
     }
 
