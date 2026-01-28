@@ -9,15 +9,21 @@ services:
       - "5420:5432"
     volumes:
       - pgdata_v2:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d  # 初期SQLを実行
 
   api_v2:
     build: ./v2/api
     environment:
-      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/app
+    - AUDIT_LOG_PATH=/app/logs/audit.log
+    - DATABASE_URL=postgresql+psycopg2://postgres:postgres@db:5432/app
     ports:
       - "8010:8010"
     depends_on:
       - db
+    volumes:
+      # - ./backend/logs:/app/logs
+      - ./logs:/app/logs
+      
 
   web_v2:
     build: ./v2/web

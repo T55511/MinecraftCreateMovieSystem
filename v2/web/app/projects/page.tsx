@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Project } from "lib/api";
 import { createProject, listProjects } from "lib/api";
 import Link from "next/link";
+import { notifyDataChanged } from "lib/events";
 
 function formatDate(d: string | null) {
   if (!d) return "未設定";
@@ -50,6 +51,7 @@ export default function ProjectsPage() {
       setTheme("");
       setDueDate("");
       await refresh();
+      notifyDataChanged();
     } catch (e: any) {
       setError(e?.message ?? "Failed to create");
     } finally {

@@ -9,8 +9,14 @@ from db import Base, engine, get_db, SessionLocal, wait_for_db
 from seed import seed_all
 from models import TProject, TProjectTask, MTaskTemplate, MCheckItem, MTaskCheckMap, TTimerLog
 
+from routes.admin_audit import router as admin_audit_router
+from core.audit_log import audit_logger, AuditLevel
+from routes.master_status import router as master_status_router
+
 app = FastAPI(title="Minecraft Create Movie System v2 API")
 
+app.include_router(admin_audit_router)
+app.include_router(master_status_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -103,6 +109,16 @@ class ProjectTaskOut(BaseModel):
 @app.get("/v2/projects", response_model=list[ProjectOut])
 def list_projects(db: Session = Depends(get_db)):
     projects = db.execute(select(TProject).order_by(TProject.project_id.desc())).scalars().all()
+
+    audit_logger.log(
+        level=AuditLevel.INFO,
+        action="プロジェクト一覧取得",
+        target_type="/get /v2/projects",
+        target_id=str(),
+        summary="プロジェクト一覧を取得しました。",
+        detail={"version": "なし", "change_note": "なし"},
+    )
+
     return projects
 
 
@@ -135,6 +151,15 @@ def create_project(body: ProjectCreate, db: Session = Depends(get_db)):
         ))
     db.commit()
 
+    audit_logger.log(
+        level=AuditLevel.INFO,
+        action="/post /v2/projects",
+        target_type="プロジェクト作成",
+        target_id=str(),
+        summary="プロジェクトを作成しました。",
+        detail={"version": "なし", "change_note": "なし"},
+    )
+
     return p
 
 @app.get("/v2/projects/{project_id}", response_model=ProjectDetailOut)
@@ -144,7 +169,25 @@ def get_project(project_id: int, db: Session = Depends(get_db)):
     ).scalar_one_or_none()
 
     if not p:
+        audit_logger.log(
+            level=AuditLevel.ERROR,
+            action="/get /v2/projects/{project_id}",
+            target_type="プロジェクト取得失敗",
+            target_id=str(),
+            summary="プロジェクトが見つかりませんでした。",
+            detail={"version": "なし", "change_note": "なし"},
+        )
         raise HTTPException(status_code=404, detail="Project not found")
+    
+    audit_logger.log(
+        level=AuditLevel.INFO,
+        action="/get /v2/projects/{project_id}",
+        target_type="プロジェクト取得",
+        target_id=str(),
+        summary="プロジェクト" + str(project_id) + "を取得しました。",
+        detail={"version": "なし", "change_note": "なし"},
+    )
+
     return p
 
 
@@ -176,6 +219,15 @@ def list_project_tasks(project_id: int, db: Session = Depends(get_db)):
             sort_order=t.sort_order,
             is_active=t.is_active,
         ))
+    
+    audit_logger.log(
+        level=AuditLevel.INFO,
+        action="/get /v2/projects/{project_id}/tasks/list",
+        target_type="プロジェクトタスク一覧取得",
+        target_id=str(),
+        summary="プロジェクトタスク一覧を取得しました。",
+        detail={"version": "なし", "change_note": "なし"},
+    )
     return result
 
 ALLOWED_STATUSES = ["未着手", "進行中", "完了"]
@@ -200,8 +252,24 @@ def update_task_status(project_id: int, project_task_id: int, body: TaskStatusPa
 
     # 遷移ルール（簡易）
     if task.status == "未着手" and body.status == "完了":
+        audit_logger.log(
+            level=AuditLevel.WARNING,
+            action="/patch /v2/projects/{project_id}/tasks/{project_task_id}",
+            target_type="プロジェクトタスクステータス変更失敗",
+            target_id=str(project_task_id),
+            summary="プロジェクトタスクのステータスを未着手から完了に変更しようとしましたが、ガードされました。",
+            detail={"version": "なし", "change_note": "なし"},
+        )
         raise HTTPException(status_code=400, detail="Cannot move 未着手 -> 完了 directly")
     if task.status == "完了" and body.status == "未着手":
+        audit_logger.log(
+            level=AuditLevel.WARNING,
+            action="/patch /v2/projects/{project_id}/tasks/{project_task_id}",
+            target_type="プロジェクトタスクステータス変更失敗",
+            target_id=str(project_task_id),
+            summary="プロジェクトタスクのステータスを完了から未着手に変更しようとしましたが、ガードされました。",
+            detail={"version": "なし", "change_note": "なし"},
+        )
         raise HTTPException(status_code=400, detail="Cannot move 完了 -> 未着手 directly")
 
     # ✅ 完了ガード（ここがインデント崩れやすい）
@@ -237,6 +305,15 @@ def update_task_status(project_id: int, project_task_id: int, body: TaskStatusPa
     db.commit()
     db.refresh(task)
 
+    audit_logger.log(
+        level=AuditLevel.INFO,
+        action="/patch /v2/projects/{project_id}/tasks/{project_task_id}",
+        target_type="プロジェクトタスクステータス変更",
+        target_id=str(project_task_id),
+        summary="プロジェクトタスクのステータスを変更しました。",
+        detail={"version": "なし", "change_note": task.status + " -> " + body.status},
+    )
+
     recalc_project_progress(db, project_id)
 
     return ProjectTaskOut(
@@ -250,13 +327,6 @@ def update_task_status(project_id: int, project_task_id: int, body: TaskStatusPa
         sort_order=task.sort_order,
         is_active=task.is_active,
     )
-
-class TCheckResult(Base):
-    __tablename__ = "t_check_result"
-
-    project_task_id = Column(Integer, ForeignKey("t_project_task.project_task_id"), primary_key=True)
-    check_item_id = Column(Integer, ForeignKey("m_check_item.check_item_id"), primary_key=True)
-    is_checked = Column(Boolean, nullable=False, default=False)
 
 class ChecklistItemOut(BaseModel):
     check_item_id: int
@@ -272,6 +342,14 @@ def get_task_checklist(project_id: int, project_task_id: int, db: Session = Depe
         .where(TProjectTask.is_active == True)
     ).scalar_one_or_none()
     if not task:
+        audit_logger.log(
+            level=AuditLevel.ERROR,
+            action="/get /v2/projects/{project_id}/tasks/{project_task_id}/checklist",
+            target_type="プロジェクトタスクチェックリスト取得失敗",
+            target_id=str(project_task_id),
+            summary="プロジェクトタスクのチェックリスト取得に失敗しました。",
+            detail={"version": "なし", "change_note": "なし"},
+        )
         raise HTTPException(status_code=404, detail="Task not found")
 
     # テンプレに紐づくチェック項目
@@ -288,6 +366,15 @@ def get_task_checklist(project_id: int, project_task_id: int, db: Session = Depe
         select(TCheckResult).where(TCheckResult.project_task_id == project_task_id)
     ).scalars().all()
     result_map = {r.check_item_id: r.is_checked for r in results}
+
+    audit_logger.log(
+        level=AuditLevel.INFO,
+        action="/get /v2/projects/{project_id}/tasks/{project_task_id}/checklist",
+        target_type="プロジェクトタスクチェックリスト取得",
+        target_id=str(project_task_id),
+        summary="プロジェクトタスクのチェックリストを取得しました。",
+        detail={"version": "なし", "change_note": "なし"},
+    )
 
     # 結果が無いものは false で返す
     return [
@@ -312,6 +399,14 @@ def update_task_checklist(project_id: int, project_task_id: int, body: list[Chec
         .where(TProjectTask.is_active == True)
     ).scalar_one_or_none()
     if not task:
+        audit_logger.log(
+            level=AuditLevel.ERROR,
+            action="/put /v2/projects/{project_id}/tasks/{project_task_id}/checklist",
+            target_type="プロジェクトタスクチェックリスト更新失敗",
+            target_id=str(project_task_id),
+            summary="プロジェクトタスクのチェックリストが見つかりませんでした。",
+            detail={"version": "なし", "change_note": "なし"},
+        )
         raise HTTPException(status_code=404, detail="Task not found")
 
     # 更新
@@ -333,6 +428,15 @@ def update_task_checklist(project_id: int, project_task_id: int, body: list[Chec
 
     db.commit()
 
+    audit_logger.log(
+        level=AuditLevel.INFO,
+        action="/put /v2/projects/{project_id}/tasks/{project_task_id}/checklist",
+        target_type="プロジェクトタスクチェックリスト更新",
+        target_id=str(project_task_id),
+        summary="プロジェクトタスクのチェックリストを更新しました。",
+        detail={"version": "なし", "change_note": "なし"},
+    )
+
     # 更新後の一覧を返す
     return get_task_checklist(project_id, project_task_id, db)
 
@@ -345,6 +449,14 @@ def start_timer(project_id: int, project_task_id: int, db: Session = Depends(get
         .where(TProjectTask.is_active == True)
     ).scalar_one_or_none()
     if not task:
+        audit_logger.log(
+            level=AuditLevel.INFO,
+            action="",
+            target_type="",
+            target_id=str(),
+            summary="",
+            detail={"version": "", "change_note": ""},
+        )
         raise HTTPException(status_code=404, detail="Task not found")
 
     # 既に動いているタイマーがあれば禁止
@@ -354,6 +466,14 @@ def start_timer(project_id: int, project_task_id: int, db: Session = Depends(get
         .where(TTimerLog.end_time.is_(None))
     ).scalar_one_or_none()
     if running:
+        audit_logger.log(
+            level=AuditLevel.INFO,
+            action="",
+            target_type="",
+            target_id=str(),
+            summary="",
+            detail={"version": "", "change_note": ""},
+        )
         raise HTTPException(status_code=409, detail="Timer already running")
 
     log = TTimerLog(
@@ -362,6 +482,16 @@ def start_timer(project_id: int, project_task_id: int, db: Session = Depends(get
     )
     db.add(log)
     db.commit()
+
+    audit_logger.log(
+        level=AuditLevel.INFO,
+        action="",
+        target_type="",
+        target_id=str(),
+        summary="",
+        detail={"version": "", "change_note": ""},
+    )
+
     return {"started": True}
 
 @app.post("/v2/projects/{project_id}/tasks/{project_task_id}/timer/stop")
@@ -374,6 +504,14 @@ def stop_timer(project_id: int, project_task_id: int, db: Session = Depends(get_
         .where(TProjectTask.is_active == True)
     ).scalar_one_or_none()
     if not task:
+        audit_logger.log(
+            level=AuditLevel.INFO,
+            action="",
+            target_type="",
+            target_id=str(),
+            summary="",
+            detail={"version": "", "change_note": ""},
+        )
         raise HTTPException(status_code=404, detail="Task not found")
 
     # 実行中ログ取得
@@ -383,6 +521,14 @@ def stop_timer(project_id: int, project_task_id: int, db: Session = Depends(get_
         .where(TTimerLog.end_time.is_(None))
     ).scalar_one_or_none()
     if not log:
+        audit_logger.log(
+            level=AuditLevel.INFO,
+            action="",
+            target_type="",
+            target_id=str(),
+            summary="",
+            detail={"version": "", "change_note": ""},
+        )
         raise HTTPException(status_code=404, detail="Running timer not found")
 
     end = datetime.utcnow()
@@ -404,8 +550,14 @@ def stop_timer(project_id: int, project_task_id: int, db: Session = Depends(get_
     db.commit()
     db.refresh(task)
 
-    # デバック用
-    print("DEBUG total:", total, "task.actual_time_min:", task.actual_time_min)
+    audit_logger.log(
+        level=AuditLevel.INFO,
+        action="",
+        target_type="",
+        target_id=str(),
+        summary="",
+        detail={"version": "", "change_note": ""},
+    )
 
     return {"stopped": True, "duration_min": float(duration_min), "total_min": float(task.actual_time_min)}
 
@@ -419,6 +571,14 @@ def timer_status(project_id: int, project_task_id: int, db: Session = Depends(ge
         .where(TProjectTask.is_active == True)
     ).scalar_one_or_none()
     if not task:
+        audit_logger.log(
+            level=AuditLevel.INFO,
+            action="",
+            target_type="",
+            target_id=str(),
+            summary="",
+            detail={"version": "", "change_note": ""},
+        )
         raise HTTPException(status_code=404, detail="Task not found")
 
     running = db.execute(
@@ -429,11 +589,28 @@ def timer_status(project_id: int, project_task_id: int, db: Session = Depends(ge
     ).scalar_one_or_none()
 
     if not running:
+        audit_logger.log(
+            level=AuditLevel.INFO,
+            action="",
+            target_type="",
+            target_id=str(),
+            summary="",
+            detail={"version": "", "change_note": ""},
+        )
         return {"running": False}
 
     # 経過時間（停止してないので現在時刻で計算）
     now = datetime.utcnow()
     elapsed_min = (now - running.start_time).total_seconds() / 60.0
+
+    audit_logger.log(
+        level=AuditLevel.INFO,
+        action="",
+        target_type="",
+        target_id=str(),
+        summary="",
+        detail={"version": "", "change_note": ""},
+    )
 
     return {
         "running": True,
@@ -477,6 +654,15 @@ def dashboard_workload(db: Session = Depends(get_db)):
     load_percent = 0.0
     if estimated > 0:
         load_percent = float(round((actual / estimated) * 100.0, 1))
+
+    audit_logger.log(
+        level=AuditLevel.INFO,
+        action="",
+        target_type="",
+        target_id=str(),
+        summary="",
+        detail={"version": "", "change_note": ""},
+    )
 
     return {
         "from": start.isoformat(),

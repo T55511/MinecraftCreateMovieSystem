@@ -1,0 +1,10 @@
+{"timestamp":"2026-01-28T12:01:26.680903+00:00","level":"INFO","actor":"local-user","action":"","target_type":"","target_id":"","summary":"","detail":{"version":"","change_note":""}}
+{"timestamp":"2026-01-28T12:01:26.682684+00:00","level":"INFO","actor":"local-user","action":"プロジェクト一覧取得","target_type":"/get /v2/projects","target_id":"","summary":"プロジェクト一覧を取得しました。","detail":{"version":"なし","change_note":"なし"}}
+{"timestamp":"2026-01-28T12:01:26.680903+00:00","level":"INFO","actor":"local-user","action":"","target_type":"","target_id":"","summary":"","detail":{"version":"","change_note":""}}
+{"timestamp":"2026-01-28T12:01:26.682684+00:00","level":"INFO","actor":"local-user","action":"プロジェクト一覧取得","target_type":"/get /v2/projects","target_id":"","summary":"プロジェクト一覧を取得しました。","detail":{"version":"なし","change_note":"なし"}}
+{"timestamp":"2026-01-28T12:01:31.720378+00:00","level":"INFO","actor":"local-user","action":"/post /v2/projects","target_type":"プロジェクト作成","target_id":"","summary":"プロジェクトを作成しました。","detail":{"version":"なし","change_note":"なし"}}
+{"timestamp":"2026-01-28T12:01:31.720378+00:00","level":"INFO","actor":"local-user","action":"/post /v2/projects","target_type":"プロジェクト作成","target_id":"","summary":"プロジェクトを作成しました。","detail":{"version":"なし","change_note":"なし"}}
+{"timestamp":"2026-01-28T12:01:31.738688+00:00","level":"INFO","actor":"local-user","action":"プロジェクト一覧取得","target_type":"/get /v2/projects","target_id":"","summary":"プロジェクト一覧を取得しました。","detail":{"version":"なし","change_note":"なし"}}
+{"timestamp":"2026-01-28T12:01:31.738688+00:00","level":"INFO","actor":"local-user","action":"プロジェクト一覧取得","target_type":"/get /v2/projects","target_id":"","summary":"プロジェクト一覧を取得しました。","detail":{"version":"なし","change_note":"なし"}}
+{"timestamp":"2026-01-28T12:01:31.760045+00:00","level":"INFO","actor":"local-user","action":"","target_type":"","target_id":"","summary":"","detail":{"version":"","change_note":""}}
+{"timestamp":"2026-01-28T12:01:31.760045+00:00","level":"INFO","actor":"local-user","action":"","target_type":"","target_id":"","summary":"","detail":{"version":"","change_note":""}}

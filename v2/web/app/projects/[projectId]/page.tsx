@@ -6,6 +6,7 @@ import Link from "next/link";
 import type { ProjectDetail, ProjectTask, ChecklistItem } from "lib/api";
 import { getProject, listProjectTasks, patchProjectTaskStatus, getTaskChecklist, putTaskChecklist } from "lib/api";
 import { startTaskTimer, stopTaskTimer, getTaskTimerStatus } from "lib/api";
+import { notifyDataChanged } from "lib/events";
 
 
 function formatDate(d: string | null | undefined) {
@@ -49,6 +50,7 @@ export default function ProjectDetailPage() {
         setError(null);
         await patchProjectTaskStatus(projectId, t.project_task_id, next);
         await refresh();
+        notifyDataChanged();
       } catch (e: any) {
         setError(e?.message ?? "Failed to move");
         setLoading(false);
@@ -65,6 +67,7 @@ export default function ProjectDetailPage() {
         setError(null);
         await patchProjectTaskStatus(projectId, task.project_task_id, toStatus);
         await refresh();
+        notifyDataChanged();
       } catch (e: any) {
         setError(e?.message ?? "Failed to move");
         setLoading(false);
@@ -274,6 +277,7 @@ export default function ProjectDetailPage() {
                       try {
                         const saved = await putTaskChecklist(projectId, selectedTask.project_task_id, next);
                         setChecklist(saved);
+                        notifyDataChanged();
                       } catch (err: any) {
                         setError(err?.message ?? "Failed to save checklist");
                       }
@@ -309,6 +313,8 @@ export default function ProjectDetailPage() {
                       await stopTaskTimer(projectId, selectedTask.project_task_id);
                       setTimerRunning(false);
                       await refresh(); // 実績時間を即反映
+                      // ✅ サイドバーの週間負荷を即更新
+                      window.dispatchEvent(new Event("workload:refresh"));
                     } catch (e: any) {
                       setError(e?.message ?? "Failed to stop timer");
                     }

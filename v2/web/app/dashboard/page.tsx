@@ -31,7 +31,6 @@ export default function DashboardPage() {
     <>
       <div className="row" style={{ justifyContent: "space-between", marginBottom: 12 }}>
         <div style={{ fontWeight: 800, fontSize: 18 }}>Dashboard</div>
-        <Link href="/projects">Projectsへ</Link>
       </div>
 
       <div className="card">
