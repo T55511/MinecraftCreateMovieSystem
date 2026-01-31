@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from fastapi import Depends
+from fastapi import Depends, APIRouter
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
 
@@ -7,10 +7,11 @@ from db import get_db
 from models import TProjectTask, TTimerLog
 
 from core.audit_log import audit_logger, AuditLevel
-from ..main import app
+
+router = APIRouter()
 
 
-@app.get("/v2/dashboard/workload")
+@router.get("/v2/dashboard/workload")
 def dashboard_workload(db: Session = Depends(get_db)):
     now = datetime.utcnow()
     start = now - timedelta(days=7)

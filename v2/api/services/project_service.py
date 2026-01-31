@@ -27,5 +27,3 @@ def recalc_project_progress(db: Session, project_id: int):
         select(TProject).where(TProject.project_id == project_id)
     ).scalar_one()
     project.progress_rate = float(round(rate, 1))
-
-    db.commit()

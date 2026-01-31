@@ -1,16 +1,16 @@
 from datetime import datetime
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, APIRouter
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
 
 from db import get_db
-from models import TProjectTask, TTimerLog
 
 from core.audit_log import audit_logger, AuditLevel
-from ..main import app
+from v2.api.models import TProjectTask, TTimerLog
 
+router = APIRouter()
 
-@app.post("/v2/projects/{project_id}/tasks/{project_task_id}/timer/start")
+@router.post("/v2/projects/{project_id}/tasks/{project_task_id}/timer/start")
 def start_timer(project_id: int, project_task_id: int, db: Session = Depends(get_db)):
     task = db.execute(
         select(TProjectTask)
@@ -64,7 +64,7 @@ def start_timer(project_id: int, project_task_id: int, db: Session = Depends(get
 
     return {"started": True}
 
-@app.post("/v2/projects/{project_id}/tasks/{project_task_id}/timer/stop")
+@router.post("/v2/projects/{project_id}/tasks/{project_task_id}/timer/stop")
 def stop_timer(project_id: int, project_task_id: int, db: Session = Depends(get_db)):
     # 親タスク存在チェック（project_idも一致させる）
     task = db.execute(
@@ -131,7 +131,7 @@ def stop_timer(project_id: int, project_task_id: int, db: Session = Depends(get_
 
     return {"stopped": True, "duration_min": float(duration_min), "total_min": float(task.actual_time_min)}
 
-@app.get("/v2/projects/{project_id}/tasks/{project_task_id}/timer/status")
+@router.get("/v2/projects/{project_id}/tasks/{project_task_id}/timer/status")
 def timer_status(project_id: int, project_task_id: int, db: Session = Depends(get_db)):
     # タスク存在確認
     task = db.execute(

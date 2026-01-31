@@ -1,14 +1,19 @@
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, APIRouter
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from db import get_db
-from models import TProject, TProjectTask, MCheckItem, MTaskCheckMap, TCheckResult
+from schemas.task import ChecklistItemOut, ChecklistUpdateItem, ProjectTaskOut, TaskStatusPatch
+from v2.api import router
 
 from core.audit_log import audit_logger, AuditLevel
-from ..main import ChecklistItemOut, ChecklistUpdateItem, ProjectTaskOut, TaskStatusPatch, app, recalc_project_progress
+from v2.api.models import MCheckItem, MTaskCheckMap, TCheckResult, TProject, TProjectTask
+from ..services.project_service import recalc_project_progress
 
-@app.get("/v2/projects/{project_id}/tasks/list", response_model=list[ProjectTaskOut])
+router = APIRouter()
+
+
+@router.get("/v2/projects/{project_id}/tasks/list", response_model=list[ProjectTaskOut])
 def list_project_tasks(project_id: int, db: Session = Depends(get_db)):
     # project存在チェック（親が無いのに tasks だけ返さない）
     p = db.execute(select(TProject.project_id).where(TProject.project_id == project_id)).first()
@@ -49,7 +54,7 @@ def list_project_tasks(project_id: int, db: Session = Depends(get_db)):
 
 ALLOWED_STATUSES = ["未着手", "進行中", "完了"]
 
-@app.patch("/v2/projects/{project_id}/tasks/{project_task_id}", response_model=ProjectTaskOut)
+@router.patch("/v2/projects/{project_id}/tasks/{project_task_id}", response_model=ProjectTaskOut)
 def update_task_status(project_id: int, project_task_id: int, body: TaskStatusPatch, db: Session = Depends(get_db)):
     if body.status not in ALLOWED_STATUSES:
         audit_logger.log(
@@ -126,6 +131,8 @@ def update_task_status(project_id: int, project_task_id: int, body: TaskStatusPa
                 )
 
     task.status = body.status
+    recalc_project_progress(db, project_id)
+
     db.commit()
     db.refresh(task)
 
@@ -137,8 +144,6 @@ def update_task_status(project_id: int, project_task_id: int, body: TaskStatusPa
         summary="プロジェクトタスクのステータスを変更しました。",
         detail={"version": "なし", "change_note": old_status + " -> " + body.status},
     )
-
-    recalc_project_progress(db, project_id)
 
     return ProjectTaskOut(
         project_task_id=task.project_task_id,
@@ -152,7 +157,7 @@ def update_task_status(project_id: int, project_task_id: int, body: TaskStatusPa
         is_active=task.is_active,
     )
 
-@app.get("/v2/projects/{project_id}/tasks/{project_task_id}/checklist", response_model=list[ChecklistItemOut])
+@router.get("/v2/projects/{project_id}/tasks/{project_task_id}/checklist", response_model=list[ChecklistItemOut])
 def get_task_checklist(project_id: int, project_task_id: int, db: Session = Depends(get_db)):
     task = db.execute(
         select(TProjectTask)
@@ -205,7 +210,7 @@ def get_task_checklist(project_id: int, project_task_id: int, db: Session = Depe
         for ci in check_items
     ]
 
-@app.put("/v2/projects/{project_id}/tasks/{project_task_id}/checklist", response_model=list[ChecklistItemOut])
+@router.put("/v2/projects/{project_id}/tasks/{project_task_id}/checklist", response_model=list[ChecklistItemOut])
 def update_task_checklist(project_id: int, project_task_id: int, body: list[ChecklistUpdateItem], db: Session = Depends(get_db)):
     task = db.execute(
         select(TProjectTask)

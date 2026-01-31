@@ -1,14 +1,17 @@
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, APIRouter
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from db import get_db
 from models import TProject, TProjectTask, MTaskTemplate
+from schemas.project import ProjectCreate, ProjectOut, ProjectDetailOut
 
 from core.audit_log import audit_logger, AuditLevel
-from ..main import ProjectCreate, ProjectDetailOut, ProjectOut, app
 
-@app.get("/v2/projects", response_model=list[ProjectOut])
+router = APIRouter()
+
+
+@router.get("/v2/projects", response_model=list[ProjectOut])
 def list_projects(db: Session = Depends(get_db)):
     projects = db.execute(select(TProject).order_by(TProject.project_id.desc())).scalars().all()
 
@@ -24,7 +27,7 @@ def list_projects(db: Session = Depends(get_db)):
     return projects
 
 
-@app.post("/v2/projects", response_model=ProjectOut)
+@router.post("/v2/projects", response_model=ProjectOut)
 def create_project(body: ProjectCreate, db: Session = Depends(get_db)):
     try:
         with db.begin():
@@ -84,7 +87,7 @@ def create_project(body: ProjectCreate, db: Session = Depends(get_db)):
         )
         raise HTTPException(status_code=500, detail=f"create_project failed: {str(e)}")
 
-@app.get("/v2/projects/{project_id}", response_model=ProjectDetailOut)
+@router.get("/v2/projects/{project_id}", response_model=ProjectDetailOut)
 def get_project(project_id: int, db: Session = Depends(get_db)):
     p = db.execute(
         select(TProject).where(TProject.project_id == project_id)
