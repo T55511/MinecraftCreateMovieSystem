@@ -18,7 +18,7 @@ HEX_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
 
 # ---------- Schemas ----------
-class StatusDefinitionCreate(BaseModel):
+class MstStatusDefinitionCreate(BaseModel):
     status_key: str = Field(..., min_length=1, max_length=50)
     display_name: str = Field(..., min_length=1, max_length=200)
     scope: str = Field(..., pattern=r"^(PROJECT|SUBTASK|COMMON)$")
@@ -27,7 +27,7 @@ class StatusDefinitionCreate(BaseModel):
     is_active: bool = True
 
 
-class StatusDefinitionUpdate(BaseModel):
+class MstStatusDefinitionUpdate(BaseModel):
     # status_key は更新不可なので含めない
     display_name: Optional[str] = Field(default=None, min_length=1, max_length=200)
     scope: Optional[str] = Field(default=None, pattern=r"^(PROJECT|SUBTASK|COMMON)$")  # 変更を許可するかどうかは運用次第。嫌なら削除OK。
@@ -36,7 +36,7 @@ class StatusDefinitionUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class StatusDefinitionOut(BaseModel):
+class MstStatusDefinitionOut(BaseModel):
     status_key: str
     display_name: str
     scope: str
@@ -48,13 +48,13 @@ class StatusDefinitionOut(BaseModel):
         from_attributes = True
 
 
-class StatusUIItemIn(BaseModel):
+class MstStatusUIItemIn(BaseModel):
     status_key: str
     display_order: int = Field(..., ge=0)
     is_visible: bool = True
 
 
-class StatusUIItemOut(BaseModel):
+class MstStatusUIItemOut(BaseModel):
     scope: str
     status_key: str
     display_order: int
@@ -82,30 +82,30 @@ def _allowed_scopes_for_ui(scope: str) -> List[str]:
     raise HTTPException(status_code=400, detail="Invalid scope")
 
 
-# ---------- Endpoints: StatusDefinition ----------
-@router.get("/definitions", response_model=List[StatusDefinitionOut])
+# ---------- Endpoints: MstStatusDefinition ----------
+@router.get("/definitions", response_model=List[MstStatusDefinitionOut])
 def list_definitions(
     db: Session = Depends(get_db),
     scope: Optional[str] = Query(default=None, pattern=r"^(PROJECT|SUBTASK|COMMON)$"),
     active_only: bool = True,
 ):
-    q = db.query(StatusDefinition)
+    q = db.query(MstStatusDefinition)
     if scope:
-        q = q.filter(StatusDefinition.scope == scope)
+        q = q.filter(MstStatusDefinition.scope == scope)
     if active_only:
-        q = q.filter(StatusDefinition.is_active.is_(True))
-    return q.order_by(StatusDefinition.scope.asc(), StatusDefinition.status_key.asc()).all()
+        q = q.filter(MstStatusDefinition.is_active.is_(True))
+    return q.order_by(MstStatusDefinition.scope.asc(), MstStatusDefinition.status_key.asc()).all()
 
 
-@router.post("/definitions", response_model=StatusDefinitionOut)
-def create_definition(payload: StatusDefinitionCreate, db: Session = Depends(get_db)):
+@router.post("/definitions", response_model=MstStatusDefinitionOut)
+def create_definition(payload: MstStatusDefinitionCreate, db: Session = Depends(get_db)):
     _validate_color(payload.color_hex)
 
-    exists = db.query(StatusDefinition).filter(StatusDefinition.status_key == payload.status_key).first()
+    exists = db.query(MstStatusDefinition).filter(MstStatusDefinition.status_key == payload.status_key).first()
     if exists:
         raise HTTPException(status_code=409, detail="status_key already exists")
 
-    row = StatusDefinition(
+    row = MstStatusDefinition(
         status_key=payload.status_key,
         display_name=payload.display_name,
         scope=payload.scope,
@@ -128,11 +128,11 @@ def create_definition(payload: StatusDefinitionCreate, db: Session = Depends(get
     return row
 
 
-@router.patch("/definitions/{status_key}", response_model=StatusDefinitionOut)
-def update_definition(status_key: str, payload: StatusDefinitionUpdate, db: Session = Depends(get_db)):
+@router.patch("/definitions/{status_key}", response_model=MstStatusDefinitionOut)
+def update_definition(status_key: str, payload: MstStatusDefinitionUpdate, db: Session = Depends(get_db)):
     _validate_color(payload.color_hex)
 
-    row = db.query(StatusDefinition).filter(StatusDefinition.status_key == status_key).first()
+    row = db.query(MstStatusDefinition).filter(MstStatusDefinition.status_key == status_key).first()
     if not row:
         raise HTTPException(status_code=404, detail="not found")
 
@@ -162,25 +162,25 @@ def update_definition(status_key: str, payload: StatusDefinitionUpdate, db: Sess
     return row
 
 
-# ---------- Endpoints: StatusUI ----------
-@router.get("/ui", response_model=List[StatusUIItemOut])
+# ---------- Endpoints: MstStatusUI ----------
+@router.get("/ui", response_model=List[MstStatusUIItemOut])
 def list_status_ui(
     scope: str = Query(..., pattern=r"^(PROJECT|SUBTASK|COMMON)$"),
     db: Session = Depends(get_db),
 ):
     rows = (
-        db.query(StatusUI)
-        .filter(StatusUI.scope == scope)
-        .order_by(StatusUI.display_order.asc(), StatusUI.status_key.asc())
+        db.query(MstStatusUI)
+        .filter(MstStatusUI.scope == scope)
+        .order_by(MstStatusUI.display_order.asc(), MstStatusUI.status_key.asc())
         .all()
     )
     return rows
 
 
-@router.put("/ui", response_model=List[StatusUIItemOut])
+@router.put("/ui", response_model=List[MstStatusUIItemOut])
 def upsert_status_ui(
     scope: str = Query(..., pattern=r"^(PROJECT|SUBTASK|COMMON)$"),
-    items: List[StatusUIItemIn] = [],
+    items: List[MstStatusUIItemIn] = [],
     db: Session = Depends(get_db),
 ):
     if not items:
@@ -193,7 +193,7 @@ def upsert_status_ui(
 
     # 存在＆scope許容チェック
     allowed_scopes = _allowed_scopes_for_ui(scope)
-    defs = db.query(StatusDefinition).filter(StatusDefinition.status_key.in_(keys)).all()
+    defs = db.query(MstStatusDefinition).filter(MstStatusDefinition.status_key.in_(keys)).all()
     if len(defs) != len(keys):
         found = {d.status_key for d in defs}
         missing = [k for k in keys if k not in found]
@@ -207,11 +207,11 @@ def upsert_status_ui(
         # if not d.is_active: ...
 
     # 既存を全消し→入れ直し（一括更新が簡単で安全）
-    db.query(StatusUI).filter(StatusUI.scope == scope).delete()
+    db.query(MstStatusUI).filter(MstStatusUI.scope == scope).delete()
 
     rows = []
     for x in items:
-        row = StatusUI(scope=scope, status_key=x.status_key, display_order=x.display_order, is_visible=x.is_visible)
+        row = MstStatusUI(scope=scope, status_key=x.status_key, display_order=x.display_order, is_visible=x.is_visible)
         db.add(row)
         rows.append(row)
 
@@ -228,9 +228,9 @@ def upsert_status_ui(
 
     # 再取得して整列返却
     out = (
-        db.query(StatusUI)
-        .filter(StatusUI.scope == scope)
-        .order_by(StatusUI.display_order.asc(), StatusUI.status_key.asc())
+        db.query(MstStatusUI)
+        .filter(MstStatusUI.scope == scope)
+        .order_by(MstStatusUI.display_order.asc(), MstStatusUI.status_key.asc())
         .all()
     )
     return out

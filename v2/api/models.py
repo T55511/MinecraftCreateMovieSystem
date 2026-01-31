@@ -18,23 +18,6 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL is not set (e.g. postgresql+psycopg://user:pass@host:5432/db)")
-
-Base = declarative_base()
-
-
-# def main():
-#     engine = create_engine(DATABASE_URL)
-
-#     # UUIDのデフォルト生成はDB側拡張が必要なので、ここでは「事前にSQLで拡張を入れておく」想定。
-#     # すでに pgcrypto が入っていればOK。
-#     Base.metadata.create_all(engine)
-#     print("OK: tables created/ensured.")
-
-# if __name__ == "__main__":
-#     main()
 
 class MPhase(Base):
     __tablename__ = "m_phase"
