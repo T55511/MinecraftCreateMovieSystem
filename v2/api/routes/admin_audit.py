@@ -16,6 +16,7 @@ def _parse_dt(s: str) -> datetime:
 
 @router.get("")
 def list_audit_logs(
+    # trunk-ignore(ruff/B008)
     level: Optional[AuditLevel] = Query(default=None),
     q: Optional[str] = Query(default=None, description="部分一致検索（summary/actor/action/target等）"),
     time_from: Optional[str] = Query(default=None, description="ISO8601"),
@@ -33,6 +34,7 @@ def list_audit_logs(
         tf = _parse_dt(time_from) if time_from else None
         tt = _parse_dt(time_to) if time_to else None
     except ValueError:
+        # trunk-ignore(ruff/B904)
         raise HTTPException(status_code=400, detail="time_from/time_to must be ISO8601")
 
     rows: List[Dict[str, Any]] = []

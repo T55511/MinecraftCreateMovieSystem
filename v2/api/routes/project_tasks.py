@@ -1,47 +1,66 @@
-from fastapi import Depends, HTTPException, APIRouter
-from sqlalchemy.orm import Session
-from sqlalchemy import select
-
+from core.audit_log import AuditLevel, audit_logger
 from db import get_db
-from schemas.task import ChecklistItemOut, ChecklistUpdateItem, ProjectTaskOut, TaskStatusPatch
-from v2.api import router
+from fastapi import APIRouter, Depends, HTTPException  # type: ignore
+from schemas.task import (
+    ChecklistItemOut,
+    ChecklistUpdateItem,
+    ProjectTaskOut,
+    TaskStatusPatch,
+)
+from sqlalchemy import select  # type: ignore
+from sqlalchemy.orm import Session  # type: ignore
 
-from core.audit_log import audit_logger, AuditLevel
-from v2.api.models import MCheckItem, MTaskCheckMap, TCheckResult, TProject, TProjectTask
+from v2.api.models import (
+    MCheckItem,
+    MTaskCheckMap,
+    TCheckResult,
+    TProject,
+    TProjectTask,
+)
+
 from ..services.project_service import recalc_project_progress
 
 router = APIRouter()
 
 
 @router.get("/v2/projects/{project_id}/tasks/list", response_model=list[ProjectTaskOut])
+# trunk-ignore(ruff/B008)
 def list_project_tasks(project_id: int, db: Session = Depends(get_db)):
     # project存在チェック（親が無いのに tasks だけ返さない）
-    p = db.execute(select(TProject.project_id).where(TProject.project_id == project_id)).first()
+    p = db.execute(
+        select(TProject.project_id).where(TProject.project_id == project_id)
+    ).first()
     if not p:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    tasks = db.execute(
-        select(TProjectTask)
-        .where(TProjectTask.project_id == project_id)
-        .where(TProjectTask.is_active == True)
-        .order_by(TProjectTask.sort_order.asc(), TProjectTask.project_task_id.asc())
-    ).scalars().all()
+    tasks = (
+        db.execute(
+            select(TProjectTask)
+            .where(TProjectTask.project_id == project_id)
+            .where(TProjectTask.is_active.is_(True))
+            .order_by(TProjectTask.sort_order.asc(), TProjectTask.project_task_id.asc())
+        )
+        .scalars()
+        .all()
+    )
 
     # APIの返却名をUI向けに整形
     result: list[ProjectTaskOut] = []
     for t in tasks:
-        result.append(ProjectTaskOut(
-            project_task_id=t.project_task_id,
-            project_id=t.project_id,
-            task_template_id=t.task_template_id,
-            task_name=t.task_name_snapshot,
-            status=t.status,
-            est_time_min=t.est_time_min_snapshot,
-            actual_time_min=t.actual_time_min,
-            sort_order=t.sort_order,
-            is_active=t.is_active,
-        ))
-    
+        result.append(
+            ProjectTaskOut(
+                project_task_id=t.project_task_id,
+                project_id=t.project_id,
+                task_template_id=t.task_template_id,
+                task_name=t.task_name_snapshot,
+                status=t.status,
+                est_time_min=t.est_time_min_snapshot,
+                actual_time_min=t.actual_time_min,
+                sort_order=t.sort_order,
+                is_active=t.is_active,
+            )
+        )
+
     audit_logger.log(
         level=AuditLevel.INFO,
         action="/get /v2/projects/{project_id}/tasks/list",
@@ -52,10 +71,20 @@ def list_project_tasks(project_id: int, db: Session = Depends(get_db)):
     )
     return result
 
+
 ALLOWED_STATUSES = ["未着手", "進行中", "完了"]
 
-@router.patch("/v2/projects/{project_id}/tasks/{project_task_id}", response_model=ProjectTaskOut)
-def update_task_status(project_id: int, project_task_id: int, body: TaskStatusPatch, db: Session = Depends(get_db)):
+
+@router.patch(
+    "/v2/projects/{project_id}/tasks/{project_task_id}", response_model=ProjectTaskOut
+)
+def update_task_status(
+    project_id: int,
+    project_task_id: int,
+    body: TaskStatusPatch,
+    # trunk-ignore(ruff/B008)
+    db: Session = Depends(get_db),
+):
     if body.status not in ALLOWED_STATUSES:
         audit_logger.log(
             level=AuditLevel.ERROR,
@@ -63,7 +92,10 @@ def update_task_status(project_id: int, project_task_id: int, body: TaskStatusPa
             target_type="プロジェクトタスクステータス変更失敗",
             target_id=str(project_task_id),
             summary="プロジェクトタスクのステータス変更に失敗しました。",
-            detail={"version": "なし", "change_note": "ステータスが不正です: " + body.status},
+            detail={
+                "version": "なし",
+                "change_note": "ステータスが不正です: " + body.status,
+            },
         )
         raise HTTPException(status_code=400, detail=f"Invalid status: {body.status}")
 
@@ -71,12 +103,12 @@ def update_task_status(project_id: int, project_task_id: int, body: TaskStatusPa
         select(TProjectTask)
         .where(TProjectTask.project_id == project_id)
         .where(TProjectTask.project_task_id == project_task_id)
-        .where(TProjectTask.is_active == True)
+        .where(TProjectTask.is_active.is_(True))
     ).scalar_one_or_none()
 
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    
+
     old_status = task.status
 
     # 遷移ルール（簡易）
@@ -89,7 +121,9 @@ def update_task_status(project_id: int, project_task_id: int, body: TaskStatusPa
             summary="プロジェクトタスクのステータスを未着手から完了に変更しようとしましたが、ガードされました。",
             detail={"version": "なし", "change_note": "なし"},
         )
-        raise HTTPException(status_code=400, detail="Cannot move 未着手 -> 完了 directly")
+        raise HTTPException(
+            status_code=400, detail="Cannot move 未着手 -> 完了 directly"
+        )
     if task.status == "完了" and body.status == "未着手":
         audit_logger.log(
             level=AuditLevel.WARNING,
@@ -99,15 +133,19 @@ def update_task_status(project_id: int, project_task_id: int, body: TaskStatusPa
             summary="プロジェクトタスクのステータスを完了から未着手に変更しようとしましたが、ガードされました。",
             detail={"version": "なし", "change_note": "なし"},
         )
-        raise HTTPException(status_code=400, detail="Cannot move 完了 -> 未着手 directly")
+        raise HTTPException(
+            status_code=400, detail="Cannot move 完了 -> 未着手 directly"
+        )
 
     # ✅ 完了ガード（ここがインデント崩れやすい）
     if body.status == "完了":
         check_items = db.execute(
             select(MCheckItem.check_item_id, MCheckItem.label)
-            .join(MTaskCheckMap, MTaskCheckMap.check_item_id == MCheckItem.check_item_id)
+            .join(
+                MTaskCheckMap, MTaskCheckMap.check_item_id == MCheckItem.check_item_id
+            )
             .where(MTaskCheckMap.task_template_id == task.task_template_id)
-            .where(MCheckItem.is_active == True)
+            .where(MCheckItem.is_active.is_(True))
         ).all()
 
         # チェック項目がある場合のみガードする
@@ -115,7 +153,7 @@ def update_task_status(project_id: int, project_task_id: int, body: TaskStatusPa
             checked = db.execute(
                 select(TCheckResult.check_item_id)
                 .where(TCheckResult.project_task_id == task.project_task_id)
-                .where(TCheckResult.is_checked == True)
+                .where(TCheckResult.is_checked.is_(True))
             ).all()
             checked_ids = {c[0] for c in checked}
 
@@ -126,8 +164,7 @@ def update_task_status(project_id: int, project_task_id: int, body: TaskStatusPa
             ]
             if missing:
                 raise HTTPException(
-                    status_code=409,
-                    detail={"can_complete": False, "missing": missing}
+                    status_code=409, detail={"can_complete": False, "missing": missing}
                 )
 
     task.status = body.status
@@ -157,13 +194,22 @@ def update_task_status(project_id: int, project_task_id: int, body: TaskStatusPa
         is_active=task.is_active,
     )
 
-@router.get("/v2/projects/{project_id}/tasks/{project_task_id}/checklist", response_model=list[ChecklistItemOut])
-def get_task_checklist(project_id: int, project_task_id: int, db: Session = Depends(get_db)):
+
+@router.get(
+    "/v2/projects/{project_id}/tasks/{project_task_id}/checklist",
+    response_model=list[ChecklistItemOut],
+)
+def get_task_checklist(
+    project_id: int,
+    project_task_id: int,
+    # trunk-ignore(ruff/B008)
+    db: Session = Depends(get_db),
+):
     task = db.execute(
         select(TProjectTask)
         .where(TProjectTask.project_id == project_id)
         .where(TProjectTask.project_task_id == project_task_id)
-        .where(TProjectTask.is_active == True)
+        .where(TProjectTask.is_active.is_(True))
     ).scalar_one_or_none()
     if not task:
         audit_logger.log(
@@ -177,18 +223,28 @@ def get_task_checklist(project_id: int, project_task_id: int, db: Session = Depe
         raise HTTPException(status_code=404, detail="Task not found")
 
     # テンプレに紐づくチェック項目
-    check_items = db.execute(
-        select(MCheckItem)
-        .join(MTaskCheckMap, MTaskCheckMap.check_item_id == MCheckItem.check_item_id)
-        .where(MTaskCheckMap.task_template_id == task.task_template_id)
-        .where(MCheckItem.is_active == True)
-        .order_by(MCheckItem.sort_order.asc(), MCheckItem.check_item_id.asc())
-    ).scalars().all()
+    check_items = (
+        db.execute(
+            select(MCheckItem)
+            .join(
+                MTaskCheckMap, MTaskCheckMap.check_item_id == MCheckItem.check_item_id
+            )
+            .where(MTaskCheckMap.task_template_id == task.task_template_id)
+            .where(MCheckItem.is_active.is_(True))
+            .order_by(MCheckItem.sort_order.asc(), MCheckItem.check_item_id.asc())
+        )
+        .scalars()
+        .all()
+    )
 
     # 既存の結果
-    results = db.execute(
-        select(TCheckResult).where(TCheckResult.project_task_id == project_task_id)
-    ).scalars().all()
+    results = (
+        db.execute(
+            select(TCheckResult).where(TCheckResult.project_task_id == project_task_id)
+        )
+        .scalars()
+        .all()
+    )
     result_map = {r.check_item_id: r.is_checked for r in results}
 
     audit_logger.log(
@@ -210,13 +266,23 @@ def get_task_checklist(project_id: int, project_task_id: int, db: Session = Depe
         for ci in check_items
     ]
 
-@router.put("/v2/projects/{project_id}/tasks/{project_task_id}/checklist", response_model=list[ChecklistItemOut])
-def update_task_checklist(project_id: int, project_task_id: int, body: list[ChecklistUpdateItem], db: Session = Depends(get_db)):
+
+@router.put(
+    "/v2/projects/{project_id}/tasks/{project_task_id}/checklist",
+    response_model=list[ChecklistItemOut],
+)
+def update_task_checklist(
+    project_id: int,
+    project_task_id: int,
+    body: list[ChecklistUpdateItem],
+    # trunk-ignore(ruff/B008)
+    db: Session = Depends(get_db),
+):
     task = db.execute(
         select(TProjectTask)
         .where(TProjectTask.project_id == project_id)
         .where(TProjectTask.project_task_id == project_task_id)
-        .where(TProjectTask.is_active == True)
+        .where(TProjectTask.is_active.is_(True))
     ).scalar_one_or_none()
     if not task:
         audit_logger.log(
@@ -240,11 +306,13 @@ def update_task_checklist(project_id: int, project_task_id: int, body: list[Chec
         if row:
             row.is_checked = item.is_checked
         else:
-            db.add(TCheckResult(
-                project_task_id=project_task_id,
-                check_item_id=item.check_item_id,
-                is_checked=item.is_checked
-            ))
+            db.add(
+                TCheckResult(
+                    project_task_id=project_task_id,
+                    check_item_id=item.check_item_id,
+                    is_checked=item.is_checked,
+                )
+            )
 
     db.commit()
 

@@ -3,13 +3,19 @@
 import re
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
-
-from schemas.status import MstStatusDefinition, MstStatusDefinitionCreate, MstStatusDefinitionOut, MstStatusDefinitionUpdate, MstStatusUI, MstStatusUIItemIn, MstStatusUIItemOut
+from core.audit_log import AuditLevel, audit_logger  # 監査ログ（既に入れてる前提）
 from db import get_db  # 既存のget_dbに合わせる（なければあなたの依存に差し替え）
-
-from core.audit_log import audit_logger, AuditLevel  # 監査ログ（既に入れてる前提）
+from fastapi import APIRouter, Depends, HTTPException, Query  # type: ignore
+from schemas.status import (
+    MstStatusDefinition,
+    MstStatusDefinitionCreate,
+    MstStatusDefinitionOut,
+    MstStatusDefinitionUpdate,
+    MstStatusUI,
+    MstStatusUIItemIn,
+    MstStatusUIItemOut,
+)
+from sqlalchemy.orm import Session  # type: ignore
 
 router = APIRouter(prefix="/v2/masters/status", tags=["masters-status"])
 
@@ -37,6 +43,7 @@ def _allowed_scopes_for_ui(scope: str) -> List[str]:
 # ---------- Endpoints: MstStatusDefinition ----------
 @router.get("/definitions", response_model=List[MstStatusDefinitionOut])
 def list_definitions(
+    # trunk-ignore(ruff/B008)
     db: Session = Depends(get_db),
     scope: Optional[str] = Query(default=None, pattern=r"^(PROJECT|SUBTASK|COMMON)$"),
     active_only: bool = True,
@@ -46,14 +53,23 @@ def list_definitions(
         q = q.filter(MstStatusDefinition.scope == scope)
     if active_only:
         q = q.filter(MstStatusDefinition.is_active.is_(True))
-    return q.order_by(MstStatusDefinition.scope.asc(), MstStatusDefinition.status_key.asc()).all()
+    return q.order_by(
+        MstStatusDefinition.scope.asc(), MstStatusDefinition.status_key.asc()
+    ).all()
 
 
 @router.post("/definitions", response_model=MstStatusDefinitionOut)
-def create_definition(payload: MstStatusDefinitionCreate, db: Session = Depends(get_db)):
+def create_definition(
+    # trunk-ignore(ruff/B008)
+    payload: MstStatusDefinitionCreate, db: Session = Depends(get_db)
+):
     _validate_color(payload.color_hex)
 
-    exists = db.query(MstStatusDefinition).filter(MstStatusDefinition.status_key == payload.status_key).first()
+    exists = (
+        db.query(MstStatusDefinition)
+        .filter(MstStatusDefinition.status_key == payload.status_key)
+        .first()
+    )
     if exists:
         raise HTTPException(status_code=409, detail="status_key already exists")
 
@@ -75,16 +91,28 @@ def create_definition(payload: MstStatusDefinitionCreate, db: Session = Depends(
         target_type="mst_status_definition",
         target_id=row.status_key,
         summary="Created status definition",
-        detail={"scope": row.scope, "display_name": row.display_name, "color_hex": row.color_hex, "is_done": row.is_done},
+        detail={
+            "scope": row.scope,
+            "display_name": row.display_name,
+            "color_hex": row.color_hex,
+            "is_done": row.is_done,
+        },
     )
     return row
 
 
 @router.patch("/definitions/{status_key}", response_model=MstStatusDefinitionOut)
-def update_definition(status_key: str, payload: MstStatusDefinitionUpdate, db: Session = Depends(get_db)):
+def update_definition(
+    # trunk-ignore(ruff/B008)
+    status_key: str, payload: MstStatusDefinitionUpdate, db: Session = Depends(get_db)
+):
     _validate_color(payload.color_hex)
 
-    row = db.query(MstStatusDefinition).filter(MstStatusDefinition.status_key == status_key).first()
+    row = (
+        db.query(MstStatusDefinition)
+        .filter(MstStatusDefinition.status_key == status_key)
+        .first()
+    )
     if not row:
         raise HTTPException(status_code=404, detail="not found")
 
@@ -109,7 +137,13 @@ def update_definition(status_key: str, payload: MstStatusDefinitionUpdate, db: S
         target_type="mst_status_definition",
         target_id=row.status_key,
         summary="Updated status definition",
-        detail={"scope": row.scope, "display_name": row.display_name, "color_hex": row.color_hex, "is_done": row.is_done, "is_active": row.is_active},
+        detail={
+            "scope": row.scope,
+            "display_name": row.display_name,
+            "color_hex": row.color_hex,
+            "is_done": row.is_done,
+            "is_active": row.is_active,
+        },
     )
     return row
 
@@ -118,6 +152,7 @@ def update_definition(status_key: str, payload: MstStatusDefinitionUpdate, db: S
 @router.get("/ui", response_model=List[MstStatusUIItemOut])
 def list_status_ui(
     scope: str = Query(..., pattern=r"^(PROJECT|SUBTASK|COMMON)$"),
+    # trunk-ignore(ruff/B008)
     db: Session = Depends(get_db),
 ):
     rows = (
@@ -132,7 +167,9 @@ def list_status_ui(
 @router.put("/ui", response_model=List[MstStatusUIItemOut])
 def upsert_status_ui(
     scope: str = Query(..., pattern=r"^(PROJECT|SUBTASK|COMMON)$"),
+    # trunk-ignore(ruff/B006)
     items: List[MstStatusUIItemIn] = [],
+    # trunk-ignore(ruff/B008)
     db: Session = Depends(get_db),
 ):
     if not items:
@@ -145,7 +182,11 @@ def upsert_status_ui(
 
     # 存在＆scope許容チェック
     allowed_scopes = _allowed_scopes_for_ui(scope)
-    defs = db.query(MstStatusDefinition).filter(MstStatusDefinition.status_key.in_(keys)).all()
+    defs = (
+        db.query(MstStatusDefinition)
+        .filter(MstStatusDefinition.status_key.in_(keys))
+        .all()
+    )
     if len(defs) != len(keys):
         found = {d.status_key for d in defs}
         missing = [k for k in keys if k not in found]
@@ -153,7 +194,10 @@ def upsert_status_ui(
 
     for d in defs:
         if d.scope not in allowed_scopes:
-            raise HTTPException(status_code=400, detail=f"status_key '{d.status_key}' scope '{d.scope}' is not allowed for UI scope '{scope}'")
+            raise HTTPException(
+                status_code=400,
+                detail=f"status_key '{d.status_key}' scope '{d.scope}' is not allowed for UI scope '{scope}'",
+            )
         # 非表示運用はUI側で選択不可にする想定（DB側は is_visible だけ）
         # is_active=false のものをUIに混ぜるかは運用次第。混ぜたくないならここで弾く
         # if not d.is_active: ...
@@ -163,7 +207,12 @@ def upsert_status_ui(
 
     rows = []
     for x in items:
-        row = MstStatusUI(scope=scope, status_key=x.status_key, display_order=x.display_order, is_visible=x.is_visible)
+        row = MstStatusUI(
+            scope=scope,
+            status_key=x.status_key,
+            display_order=x.display_order,
+            is_visible=x.is_visible,
+        )
         db.add(row)
         rows.append(row)
 

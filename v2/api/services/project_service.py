@@ -1,5 +1,5 @@
-from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy.orm import Session # type: ignore
+from sqlalchemy import select # type: ignore
 
 from models import TProject, TProjectTask
 
@@ -8,7 +8,7 @@ def recalc_project_progress(db: Session, project_id: int):
     tasks = db.execute(
         select(TProjectTask.status)
         .where(TProjectTask.project_id == project_id)
-        .where(TProjectTask.is_active == True)
+        .where(TProjectTask.is_active.is_(True))
     ).all()
 
     if not tasks:

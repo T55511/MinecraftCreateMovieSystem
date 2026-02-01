@@ -1,17 +1,17 @@
 from datetime import datetime, timedelta
-from fastapi import Depends, APIRouter
-from sqlalchemy.orm import Session
-from sqlalchemy import select, func
 
+from core.audit_log import AuditLevel, audit_logger
 from db import get_db
+from fastapi import APIRouter, Depends
 from models import TProjectTask, TTimerLog
-
-from core.audit_log import audit_logger, AuditLevel
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 router = APIRouter()
 
 
 @router.get("/v2/dashboard/workload")
+# trunk-ignore(ruff/B008)
 def dashboard_workload(db: Session = Depends(get_db)):
     now = datetime.utcnow()
     start = now - timedelta(days=7)
@@ -25,18 +25,22 @@ def dashboard_workload(db: Session = Depends(get_db)):
     ).scalar_one()
 
     # 直近7日で作業したプロジェクト（timerlog経由で project_id を引く）
-    project_ids = db.execute(
-        select(func.distinct(TProjectTask.project_id))
-        .join(TTimerLog, TTimerLog.project_task_id == TProjectTask.project_task_id)
-        .where(TTimerLog.end_time.is_not(None))
-        .where(TTimerLog.end_time >= start)
-    ).scalars().all()
+    project_ids = (
+        db.execute(
+            select(func.distinct(TProjectTask.project_id))
+            .join(TTimerLog, TTimerLog.project_task_id == TProjectTask.project_task_id)
+            .where(TTimerLog.end_time.is_not(None))
+            .where(TTimerLog.end_time >= start)
+        )
+        .scalars()
+        .all()
+    )
 
     if project_ids:
         estimated = db.execute(
             select(func.coalesce(func.sum(TProjectTask.est_time_min_snapshot), 0))
             .where(TProjectTask.project_id.in_(project_ids))
-            .where(TProjectTask.is_active == True)
+            .where(TProjectTask.is_active.is_(True))
         ).scalar_one()
     else:
         estimated = 0

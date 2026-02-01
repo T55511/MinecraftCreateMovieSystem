@@ -3,35 +3,51 @@ from __future__ import annotations
 import json
 import os
 import threading
-from dataclasses import dataclass, asdict
+import uuid
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Optional, Dict
-import traceback
+from typing import Any, Dict, Optional
+
+from services.event_log_writer import enqueue_event
+
 
 class AuditLevel(str, Enum):
     INFO = "INFO"
     WARNING = "WARNING"
     ERROR = "ERROR"
 
+
+class EventType(str, Enum):
+    AUDIT = "audit"
+    ERROR = "error"
+    VALIDATION = "validation"
+    SYSTEM = "system"
+
+
 @dataclass(frozen=True)
 class AuditEvent:
-    timestamp: str                 # ISO8601 UTC
+    event_id: str
+    timestamp: str  # ISO8601 UTC
     level: AuditLevel
-    actor: str                     # 今は "local-user" 固定でもOK
-    action: str                    # 例: CREATE_TEMPLATE_VERSION, SET_LATEST, DISABLE
-    target_type: str               # 例: tpl_project_template
-    target_id: Optional[str]       # uuid or status_key etc
-    summary: str                   # 短文
+    event_type: EventType  # audit / error / validation / system
+    request_id: Optional[str]  # 同一リクエストを紐付ける
+    actor: str  # 今は "local-user" 固定でもOK
+    action: str  # 例: POST /v2/projects
+    target_type: str  # 例: project, task, template, unhandled_exception
+    target_id: Optional[str]  # uuid or status_key etc
+    summary: str  # 短文
     detail: Optional[Dict[str, Any]] = None  # 差分や入力など（個人情報は入れない）
+
 
 class AuditLogger:
     """
-    JSONL(1行1JSON)で監査ログを追記するロガー。
+    JSONL(1行1JSON)でログを追記するロガー。
     - 低コスト
     - grepしやすい
     - UIでのフィルタもしやすい
     """
+
     def __init__(self, file_path: str):
         self.file_path = file_path
         self._lock = threading.Lock()
@@ -46,10 +62,15 @@ class AuditLogger:
         summary: str,
         actor: str = "local-user",
         detail: Optional[Dict[str, Any]] = None,
+        event_type: EventType = EventType.AUDIT,  # ← 追加（既存呼び出しは影響なし）
+        request_id: Optional[str] = None,  # ← 追加（既存呼び出しは影響なし）
     ) -> None:
         event = AuditEvent(
+            event_id=str(uuid.uuid4()),
             timestamp=datetime.now(timezone.utc).isoformat(),
             level=level,
+            event_type=event_type,
+            request_id=request_id,
             actor=actor,
             action=action,
             target_type=target_type,
@@ -63,8 +84,17 @@ class AuditLogger:
         with self._lock:
             with open(self.file_path, "a", encoding="utf-8") as f:
                 f.write(line + "\n")
+        # log() の末尾に追加
+        data = asdict(event)
+
+        # ファイル追記（既存のまま） ← ここが一次ログ
+        with self._lock:
+            with open(self.file_path, "a", encoding="utf-8") as f:
+                f.write(line + "\n")
+
+        # DB追随（失敗してもOK）
+        enqueue_event(data)
 
 
-# グローバルに使うならここで生成（DIしたいならFastAPIのDependsにしてもOK）
 AUDIT_LOG_PATH = os.getenv("AUDIT_LOG_PATH", "./logs/audit.log")
 audit_logger = AuditLogger(AUDIT_LOG_PATH)

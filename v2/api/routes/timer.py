@@ -1,22 +1,25 @@
+# trunk-ignore-all(isort)
 from datetime import datetime
-from fastapi import Depends, HTTPException, APIRouter
-from sqlalchemy.orm import Session
-from sqlalchemy import select, func
 
+from core.audit_log import AuditLevel, audit_logger
 from db import get_db
+from fastapi import APIRouter, Depends, HTTPException  # type: ignore
+from sqlalchemy import func, select  # type: ignore
+from sqlalchemy.orm import Session  # type: ignore
 
-from core.audit_log import audit_logger, AuditLevel
 from v2.api.models import TProjectTask, TTimerLog
 
 router = APIRouter()
 
+
 @router.post("/v2/projects/{project_id}/tasks/{project_task_id}/timer/start")
+# trunk-ignore(ruff/B008)
 def start_timer(project_id: int, project_task_id: int, db: Session = Depends(get_db)):
     task = db.execute(
         select(TProjectTask)
         .where(TProjectTask.project_id == project_id)
         .where(TProjectTask.project_task_id == project_task_id)
-        .where(TProjectTask.is_active == True)
+        .where(TProjectTask.is_active.is_(True))
     ).scalar_one_or_none()
     if not task:
         audit_logger.log(
@@ -64,14 +67,16 @@ def start_timer(project_id: int, project_task_id: int, db: Session = Depends(get
 
     return {"started": True}
 
+
 @router.post("/v2/projects/{project_id}/tasks/{project_task_id}/timer/stop")
+# trunk-ignore(ruff/B008)
 def stop_timer(project_id: int, project_task_id: int, db: Session = Depends(get_db)):
     # 親タスク存在チェック（project_idも一致させる）
     task = db.execute(
         select(TProjectTask)
         .where(TProjectTask.project_id == project_id)
         .where(TProjectTask.project_task_id == project_task_id)
-        .where(TProjectTask.is_active == True)
+        .where(TProjectTask.is_active.is_(True))
     ).scalar_one_or_none()
     if not task:
         audit_logger.log(
@@ -129,16 +134,22 @@ def stop_timer(project_id: int, project_task_id: int, db: Session = Depends(get_
         detail={"version": "なし", "change_note": "なし"},
     )
 
-    return {"stopped": True, "duration_min": float(duration_min), "total_min": float(task.actual_time_min)}
+    return {
+        "stopped": True,
+        "duration_min": float(duration_min),
+        "total_min": float(task.actual_time_min),
+    }
+
 
 @router.get("/v2/projects/{project_id}/tasks/{project_task_id}/timer/status")
+# trunk-ignore(ruff/B008)
 def timer_status(project_id: int, project_task_id: int, db: Session = Depends(get_db)):
     # タスク存在確認
     task = db.execute(
         select(TProjectTask)
         .where(TProjectTask.project_id == project_id)
         .where(TProjectTask.project_task_id == project_task_id)
-        .where(TProjectTask.is_active == True)
+        .where(TProjectTask.is_active.is_(True))
     ).scalar_one_or_none()
     if not task:
         audit_logger.log(
